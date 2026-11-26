@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Warm Express</title>
+<meta name="description" content="A cozy pixel-art New Year game about a little steam train. Уютная новогодняя игра про маленький паровоз.">
+<meta name="theme-color" content="#141228">
+<link rel="icon" type="image/png" href="assets/ui/icon_train.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=DotGothic16&family=Noto+Sans+SC:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #161634; overflow: hidden; }
+  canvas { position: fixed; left: 0; top: 0; display: block; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; outline: none; }
+  #rotate { display: none; position: fixed; left: 0; right: 0; bottom: 8%; text-align: center; color: #ffdf8a; font: 600 16px "Pixelify Sans", sans-serif; pointer-events: none; }
+  @media (orientation: portrait) and (max-width: 700px) { #rotate { display: block; } }
+  #noscript { color: #fff6d0; font-family: sans-serif; padding: 2em; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="game" tabindex="0" aria-label="Warm Express / Тёплый экспресс"></canvas>
+<div id="rotate">Turn your phone sideways 🔄</div>
+<noscript><div id="noscript">JavaScript is required to play. Для игры нужен JavaScript.</div></noscript>
+<script src="i18n.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
