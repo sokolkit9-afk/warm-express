@@ -27,7 +27,8 @@
     return s;
   }
   const isCJK = () => lang === 'zh' || lang === 'ja';
-  const fontStack = () => lang === 'zh' ? '"Noto Sans SC", "Pixelify Sans", sans-serif'
+  const fontStack = () => lang === 'ru' || lang === 'uk' ? '"Rubik", "Segoe UI", sans-serif'
+    : lang === 'zh' ? '"Noto Sans SC", "Pixelify Sans", sans-serif'
     : lang === 'ja' ? '"DotGothic16", "Noto Sans SC", sans-serif' : '"Pixelify Sans", "Trebuchet MS", "Segoe UI", sans-serif';
   const fw = w => (lang === 'ja' ? 400 : w);
   function setLang(l) {
@@ -37,7 +38,7 @@
     document.title = tr('title');
     const r = document.getElementById('rotate'); if (r) r.textContent = tr('rotate');
     if (document.fonts && document.fonts.load) {
-      const sample = l === 'zh' ? '温暖快车你好' : l === 'ja' ? 'ぬくもり特急です' : 'Warm Тёплый';
+      const sample = l === 'zh' ? '温暖快车你好' : l === 'ja' ? 'ぬくもり特急です' : l === 'ru' || l === 'uk' ? 'Тёплый експрес' : 'Warm Express';
       document.fonts.load(`700 16px ${fontStack()}`, sample).catch(() => {});
       document.fonts.load(`400 16px ${fontStack()}`, sample).catch(() => {});
     }
@@ -61,7 +62,7 @@
     smoke: 'effects/smoke_puff_4frames.png', flakes: 'effects/snowflakes_3sizes.png',
     ob_drift: 'obstacles/snowdrift_4stages.png', ob_rocks: 'obstacles/rocks_4stages.png',
     birch_a: 'decor/birch_a.png', birch_b: 'decor/birch_b.png', bush: 'decor/bush.png', signpost: 'decor/signpost.png',
-    deer: 'decor/deer_2frames.png', rabbit: 'decor/rabbit_2frames.png', haystack: 'decor/haystack.png', well: 'decor/well.png',
+    deer: 'decor/deer_10frames.png', rabbit: 'decor/rabbit_10frames.png', haystack: 'decor/haystack.png', well: 'decor/well.png',
     pond: 'decor/pond.png', boulder: 'decor/boulder.png', pine_tall: 'decor/pine_tall.png', windmill: 'decor/windmill_4frames.png',
     panel: 'ui/panel_9slice.png', button: 'ui/button_9slice.png', i_gift: 'ui/icon_gift.png',
     i_letter: 'ui/icon_letter.png', i_pass: 'ui/icon_passengers.png', i_train: 'ui/icon_train.png', i_heart: 'ui/icon_heart.png',
@@ -242,7 +243,7 @@
     add('snowman', sa - 340, 175, 0);
     // --- Birchwood / Берёзовка
     add('house_wood', be - 290, PLAT_Y, 1);
-    add('fir_big', be - 330, PLAT_Y + 2, 1);
+    add('fir_big', be - 350, 176, 0);
     add('station', be - 130, 162, 3, { sign: 'st_berez', sx: 38, sy: 39, sw: 52 });
     garlands.berez = add('house_wood', be + 26, PLAT_Y, 1, { garland: 'berez' });
     add('lamp', be - 190, 162, 4);
@@ -262,7 +263,7 @@
     // --- Snowtown / Снежноград (city houses stand on the snowy ground, not in the air)
     add('house_wood', sn - 700, 175, 0); add('house_lilac', sn - 636, 175, 0);
     add('market', sn - 560, 175, 0); add('market', sn - 506, 175, 0);
-    add('xtree', sn - 340, 162, 3, { frames: 4, ms: 400 });
+    add('xtree', sn - 300, 162, 3, { frames: 4, ms: 400 });
     add('clock_tower', sn - 214, 162, 3);
     add('station', sn - 130, 162, 3, { sign: 'st_snezh', sx: 38, sy: 39, sw: 52 });
     garlands.snezh = add('house_lilac', sn + 40, PLAT_Y, 1, { garland: 'snezh' });
@@ -291,8 +292,8 @@
       const [name, , extra] = pick(BIOMES[segOf(x)]), yb = 175 + Math.floor(r() * 3);
       if (name === 'fence2') { add('fence', x, 176, 0); add('fence', x + 48, 176, 0); }
       else if (name === 'house') add(r() < 0.5 ? 'house_wood' : 'house_lilac', x, 176, 0);
-      else if (name === 'deer') add('deer', x, 176, 0, { frames: 2, ms: 1400 + Math.floor(r() * 900) });
-      else if (name === 'rabbit') add('rabbit', x, 177, 0, { frames: 2, ms: 500 + Math.floor(r() * 400) });
+      else if (name === 'deer') add('deer', x, 177, 0, { frames: 10, ms: 240 + Math.floor(r() * 80) });
+      else if (name === 'rabbit') add('rabbit', x, 178, 0, { frames: 10, ms: 260 + Math.floor(r() * 120) });
       else if (name === 'windmill') add('windmill', x, 176, 0, { frames: 4, ms: 260 });
       else if (name === 'pond') add('pond', x, 180, 0);
       else add(name, x, yb, 0);
@@ -941,7 +942,7 @@
       T(`${tr('loading')} ${Math.round(loaded / total * 100)}%`, W / 2, H / 2 + 6, { size: 8, align: 'center', color: C.mute });
       cut(); return;
     }
-    if (G.scene === 'title') renderTitle();
+    if (G.scene === 'title') { renderTitle(); cut(); }
     else {
       if (G.scene === 'finale') { renderFinaleSky(); cut(); }
       renderHUD();
@@ -1166,7 +1167,7 @@
     setLang(lang);
     requestAnimationFrame(loop);
     const fontWait = (document.fonts && document.fonts.load) ? Promise.race([
-      Promise.all([document.fonts.load(`600 16px "Pixelify Sans"`), document.fonts.load(`700 16px "Pixelify Sans"`)]),
+      Promise.all([document.fonts.load(`600 16px ${fontStack()}`, 'Тёплый Warm'), document.fonts.load(`700 16px ${fontStack()}`, 'Тёплый Warm')]),
       new Promise(r => setTimeout(r, 2500))]).catch(() => {}) : Promise.resolve();
     await Promise.all([loadImages(), fontWait]);
     buildWorld();
@@ -1178,5 +1179,5 @@
   // debug hook for automated playtests (harmless for players)
   window.__game = { get G() { return G; }, ST, get LETTERS() { return LETTERS; }, get PASS() { return PASS; }, get obstacles() { return obstacles; },
     actions: () => actions(), busy: () => busy(), dlg: () => dlg, setLang, tr, hit: () => { const o = nearObstacle(); if (o) hitObstacle(o); return !!o; },
-    ahead: x => ahead(x), get npcs() { return npcs; }, dayInfo: () => dayInfo() };
+    ahead: x => ahead(x), get npcs() { return npcs; }, dayInfo: () => dayInfo(), get objs() { return objs; } };
 })();
