@@ -6,8 +6,9 @@
   // ------------------------------------------------------------------ constants
   const WORLD_H = 216;                       // world art is drawn for 216 px height; extra screen space becomes sky
   const GROUND_Y = 176, RAIL_Y = 182, PLAT_Y = 160;
-  const L = 7600;                            // ring line length (world wraps around)
-  const VMAX = 72, VREV = 26, ACC = 22, BRK = 46;
+  const L = 10000;                           // ring line length (world wraps around)
+  const VMAX = 72, VBOOST = 140, VREV = 26, ACC = 22, BRK = 46;
+  const DAY_LEN = 300;                       // seconds for a full night→day→night cycle
   const LOCO_W = 96, WAG_W = 76, WAG_STEP = 74;
   const ZONE_BACK = 70, ZONE_FWD = 60;       // how precisely the loco must stop at a platform
   const C = {
@@ -59,6 +60,9 @@
     letter: 'items/letter.png', star: 'items/final_star_2frames.png',
     smoke: 'effects/smoke_puff_4frames.png', flakes: 'effects/snowflakes_3sizes.png',
     ob_drift: 'obstacles/snowdrift_4stages.png', ob_rocks: 'obstacles/rocks_4stages.png',
+    birch_a: 'decor/birch_a.png', birch_b: 'decor/birch_b.png', bush: 'decor/bush.png', signpost: 'decor/signpost.png',
+    deer: 'decor/deer_2frames.png', rabbit: 'decor/rabbit_2frames.png', haystack: 'decor/haystack.png', well: 'decor/well.png',
+    pond: 'decor/pond.png', boulder: 'decor/boulder.png', pine_tall: 'decor/pine_tall.png', windmill: 'decor/windmill_4frames.png',
     panel: 'ui/panel_9slice.png', button: 'ui/button_9slice.png', i_gift: 'ui/icon_gift.png',
     i_letter: 'ui/icon_letter.png', i_pass: 'ui/icon_passengers.png', i_train: 'ui/icon_train.png', i_heart: 'ui/icon_heart.png',
     i_whistle: 'ui/icon_whistle.png', i_warn: 'ui/icon_warning.png', a_left: 'ui/arrow_left.png', a_right: 'ui/arrow_right.png', paper: 'ui/letter_paper.png',
@@ -76,7 +80,8 @@
   // ------------------------------------------------------------------ canvas: fills the whole window, pixel-perfect integer scale
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  const lo = document.createElement('canvas'); const g = lo.getContext('2d');
+  const lo = document.createElement('canvas'); const gLo = lo.getContext('2d'); let g = gLo;
+  const wl = document.createElement('canvas'); const wg = wl.getContext('2d');
   const uiC = document.createElement('canvas'); const u = uiC.getContext('2d');
   let W = 400, H = 240, S = 1, yOff = 24;
   function resize() {
@@ -87,8 +92,8 @@
     yOff = H - WORLD_H;
     canvas.width = dw; canvas.height = dh;
     canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
-    for (const c of [lo, uiC]) { c.width = W; c.height = H; }
-    g.imageSmoothingEnabled = false; u.imageSmoothingEnabled = false; ctx.imageSmoothingEnabled = false;
+    for (const c of [lo, uiC, wl]) { c.width = W; c.height = H; }
+    gLo.imageSmoothingEnabled = false; wg.imageSmoothingEnabled = false; u.imageSmoothingEnabled = false; ctx.imageSmoothingEnabled = false;
     initSnow();
   }
 
@@ -203,9 +208,9 @@
   // ------------------------------------------------------------------ world data
   const ST = [
     { id: 'santa', x: 400 },
-    { id: 'berez', x: 2300, gift: true },
-    { id: 'dolina', x: 4200, gift: true },
-    { id: 'snezh', x: 6100, gift: true },
+    { id: 'berez', x: 2900, gift: true },
+    { id: 'dolina', x: 5400, gift: true },
+    { id: 'snezh', x: 7900, gift: true },
   ];
   const stName = id => tr('st_' + id);
   const NPCSPR = { santa: 'santa', elf: 'elf', girl: 'girl', grandpa: 'grandpa', boy: 'boy', woman: 'woman', cond_d: 'conductor', cond_s: 'conductor' };
@@ -264,19 +269,34 @@
     add('lamp', sn - 268, 162, 4); add('lamp', sn - 176, 162, 4);
     add('bench', sn + 104, PLAT_Y + 1, 4);
     npc('cond_s', sn + 4);
-    // --- countryside: everything stands on the snowy ground band (y 170–182)
+    // --- countryside: each stretch of line has its own look; everything stands on the snowy ground band (y 170–182)
     const r = rng(2026);
     const zones = [[sa - 460, sa + 230], [be - 800, be + 230], [do_ - 800, do_ + 230], [sn - 760, sn + 230]];
     const free = x => zones.every(([a, b]) => [-L, 0, L].every(k => !(x > a + k - 60 && x < b + k)));
-    for (let x = 0; x < L; x += 24 + r() * 50) {
+    // [name, weight, extra spacing, options]
+    const BIOMES = [
+      // Santa → Birchwood: birch grove with deer and hares
+      [['fir_big', 3], ['birch_a', 4], ['birch_b', 3], ['fir_small', 2], ['bush', 2], ['deer', 1, 10], ['rabbit', 1], ['snowman', 0.6], ['lamp', 0.5]],
+      // Birchwood → Quiet Valley: farmland
+      [['haystack', 2.5, 8], ['fence2', 2, 50], ['well', 0.8, 6], ['house', 1, 64], ['windmill', 0.5, 30], ['fir_small', 2], ['bush', 2], ['signpost', 0.6], ['birch_b', 1.2], ['rabbit', 0.8]],
+      // Quiet Valley → Snowtown: mountain pass
+      [['pine_tall', 4], ['fir_big', 3], ['boulder', 2, 6], ['pond', 0.7, 50], ['deer', 1, 10], ['fir_small', 1.5], ['signpost', 0.4]],
+      // Snowtown → Santa: festive forest
+      [['fir_big', 4], ['fir_small', 3], ['lamp', 1.4], ['snowman', 1], ['birch_a', 1.2], ['bush', 1.5], ['house', 0.7, 64], ['rabbit', 0.6]],
+    ];
+    const pick = list => { const tot = list.reduce((t, e) => t + e[1], 0); let v = r() * tot; for (const e of list) { v -= e[1]; if (v <= 0) return e; } return list[0]; };
+    const segOf = x => { let seg = ST.length - 1; ST.forEach((st, i) => { if (x >= st.x) seg = i; }); return seg; };
+    for (let x = 0; x < L; x += 22 + r() * 46) {
       if (!free(x)) continue;
-      const p = r(), yb = 175 + Math.floor(r() * 3);
-      if (p < 0.42) add('fir_big', x, yb, 0);
-      else if (p < 0.72) add('fir_small', x, yb, 0);
-      else if (p < 0.79) add('lamp', x, 176, 0);
-      else if (p < 0.84) add('snowman', x, 176, 0);
-      else if (p < 0.92) { add('fence', x, 176, 0); add('fence', x + 48, 176, 0); x += 50; }
-      else { add(r() < 0.5 ? 'house_wood' : 'house_lilac', x, 176, 0); x += 64; }
+      const [name, , extra] = pick(BIOMES[segOf(x)]), yb = 175 + Math.floor(r() * 3);
+      if (name === 'fence2') { add('fence', x, 176, 0); add('fence', x + 48, 176, 0); }
+      else if (name === 'house') add(r() < 0.5 ? 'house_wood' : 'house_lilac', x, 176, 0);
+      else if (name === 'deer') add('deer', x, 176, 0, { frames: 2, ms: 1400 + Math.floor(r() * 900) });
+      else if (name === 'rabbit') add('rabbit', x, 177, 0, { frames: 2, ms: 500 + Math.floor(r() * 400) });
+      else if (name === 'windmill') add('windmill', x, 176, 0, { frames: 4, ms: 260 });
+      else if (name === 'pond') add('pond', x, 180, 0);
+      else add(name, x, yb, 0);
+      x += extra || 0;
     }
     objs.sort((a, b) => a.layer - b.layer);
   }
@@ -290,6 +310,7 @@
       atSt: -1, visited: new Set(), arriveCue: -1,
       gifts: { atSanta: 3, carried: 0, delivered: 0 }, everLoaded: false, giftDone: {}, lettersGiven: false,
       journal: false, jPage: 0, menu: null, menuSel: 0, finT: 0, fade: 1, whistleCd: 0, shake: 0,
+      dayT: DAY_LEN * 0.05, dayPhase: 'night', boostKey: false, boostTouch: false,
     };
     LETTERS = [
       { id: 'l1', st: 'berez', box: 0, text: 'let1', from: () => `${tr('n_girl')}, ${stName('berez')}`, state: 'box' },
@@ -397,8 +418,9 @@
     else if (G.scene === 'finale') { G.v = 0; G.throttle = 0; }
     else {
       if (busy()) G.throttle = 0;
-      const target = G.throttle === 1 ? VMAX : G.throttle === -1 ? -VREV : 0;
-      if (G.v < target) G.v = Math.min(target, G.v + (G.v < 0 ? BRK : ACC) * dt);
+      const boosting = G.throttle === 1 && (G.boostKey || G.boostTouch);
+      const target = G.throttle === 1 ? (boosting ? VBOOST : VMAX) : G.throttle === -1 ? -VREV : 0;
+      if (G.v < target) G.v = Math.min(target, G.v + (G.v < 0 ? BRK : boosting ? ACC * 1.7 : ACC) * dt);
       else if (G.v > target) G.v = Math.max(target, G.v - (G.v > 0 ? BRK : ACC) * dt);
     }
     // obstacles: crash if the loco front reaches one while moving forward
@@ -419,11 +441,11 @@
     if (at >= 0 && G.atSt < 0 && Math.abs(G.v) < 0.01 && G.throttle === 0) arrive(at);
     // arrival music cue
     const [ni, nd] = nextStation();
-    if (G.v > 0 && nd < 360 && G.arriveCue !== ni) { G.arriveCue = ni; sfx('arrive', 0.45); }
+    if (G.v > 0 && nd < 300 + G.v * G.v / (2 * BRK) && G.arriveCue !== ni) { G.arriveCue = ni; sfx('arrive', 0.45); }
     // obstacle warnings
     for (const ob of obstacles) {
       const d = ahead(ob.x);
-      if (!ob.warned && G.v > 0 && d > 0 && d < 300) { ob.warned = true; toast(tr(ob.type === 'drift' ? 't_drift' : 't_rocks')); }
+      if (!ob.warned && G.v > 0 && d > 0 && d < 200 + G.v * G.v / (2 * BRK)) { ob.warned = true; toast(tr(ob.type === 'drift' ? 't_drift' : 't_rocks')); }
     }
   }
 
@@ -661,7 +683,12 @@
       else if (k === 'Space' || k === 'Enter' || k === 'KeyE') primary();
       return;
     }
-    if (k === 'Space' || k === 'Enter') primary();
+    if (k === 'Space') {
+      if (G.scene !== 'play' || dlg || G.journal || busy()) { primary(); return; }
+      G.boostKey = true;
+      if (G.throttle === -1) G.throttle = 0; else if (G.throttle === 0) throttleUp();
+    }
+    else if (k === 'Enter') primary();
     else if (k === 'Tab') { if (G.scene === 'play' || G.scene === 'finale') G.journal = !G.journal; }
     else if (G.journal && (k === 'ArrowLeft' || k === 'KeyA')) G.jPage = Math.max(0, G.jPage - 1);
     else if (G.journal && (k === 'ArrowRight' || k === 'KeyD')) G.jPage = Math.min(Math.max(0, lettersGot().length - 1), G.jPage + 1);
@@ -673,6 +700,10 @@
     else if (k === 'KeyH') whistle();
     else if (k === 'KeyM') toggleMute();
   });
+  addEventListener('keyup', e => { if (e.code === 'Space') G.boostKey = false; });
+  addEventListener('blur', () => { G.boostKey = false; G.boostTouch = false; });
+  addEventListener('pointerup', () => { G.boostTouch = false; });
+  addEventListener('pointercancel', () => { G.boostTouch = false; });
   function toLogical(e) { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * (canvas.width / S), (e.clientY - r.top) / r.height * (canvas.height / S)]; }
   canvas.addEventListener('pointerdown', e => {
     e.preventDefault(); canvas.focus(); startAudio();
@@ -720,7 +751,7 @@
     G.shake = Math.max(0, G.shake - dt);
     for (let i = timers.length - 1; i >= 0; i--) { timers[i].t -= dt; if (timers[i].t <= 0) { const f = timers[i].fn; timers.splice(i, 1); f(); } }
     updateTrain(dt);
-    if (G.scene !== 'title') updateScript(dt);
+    if (G.scene !== 'title') { updateScript(dt); updateDay(dt); }
     if (G.scene === 'finale') {
       G.finT += dt;
       if (Math.random() < dt * 14) sparkles.push({ x: W / 2 + (Math.random() - 0.5) * 140, y: starY() + (Math.random() - 0.5) * 60, t: 0, d: 0.5 + Math.random() * 0.9 });
@@ -733,7 +764,7 @@
     for (const ob of obstacles) ob.shake = Math.max(0, ob.shake - dt);
     for (let i = flies.length - 1; i >= 0; i--) { const f = flies[i]; f.t += dt; if (f.t >= f.dur) { flies.splice(i, 1); if (f.onDone) f.onDone(); } }
     G.smokeT = (G.smokeT || 0) - dt;
-    const sp = Math.abs(G.v) / VMAX;
+    const sp = Math.min(1, Math.abs(G.v) / VMAX);
     if (G.smokeT <= 0) { puff(sp); G.smokeT = Math.abs(G.v) > 1 ? 0.13 + 0.25 * (1 - sp) : 0.75; }
     for (let i = smoke.length - 1; i >= 0; i--) { const p = smoke[i]; p.age += dt; p.y += p.vy * dt; p.x += p.vx * dt; p.vy *= (1 - dt * 0.6); if (p.age > 1.6) smoke.splice(i, 1); }
     for (let i = chunks.length - 1; i >= 0; i--) { const c = chunks[i]; c.t += dt; c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 160 * dt; if (c.t > c.d) chunks.splice(i, 1); }
@@ -744,6 +775,37 @@
     }
     for (let i = sparkles.length - 1; i >= 0; i--) { sparkles[i].t += dt; if (sparkles[i].t > sparkles[i].d) sparkles.splice(i, 1); }
     if (audioStarted) AU.wheels.volume = clamp(0.55 * Math.abs(G.v) / VMAX, 0, 1);
+  }
+  // ------------------------------------------------------------------ day & night: we start at night, the day is short
+  function dayInfo() {
+    if (G.scene === 'title' || G.scene === 'loading') return { f: 0.05, d: 0, w: 0, sun: -1 };
+    const f = mod(G.dayT, DAY_LEN) / DAY_LEN;
+    const sm = t => t * t * (3 - 2 * t);
+    let d = 0, w = 0;
+    if (f >= 0.45 && f < 0.55) { const t = (f - 0.45) / 0.1; d = sm(t); w = Math.sin(Math.PI * t); }
+    else if (f >= 0.55 && f < 0.75) d = 1;
+    else if (f >= 0.75 && f < 0.85) { const t = (f - 0.75) / 0.1; d = sm(1 - t); w = Math.sin(Math.PI * t); }
+    const sun = f >= 0.43 && f < 0.87 ? (f - 0.43) / 0.44 : -1;
+    return { f, d, w, sun };
+  }
+  function updateDay(dt) {
+    if (G.scene === 'finale') return;          // time stands still during the finale
+    G.dayT += dt;
+    const f = mod(G.dayT, DAY_LEN) / DAY_LEN;
+    const ph = f >= 0.45 && f < 0.55 ? 'dawn' : f >= 0.55 && f < 0.75 ? 'day' : f >= 0.75 && f < 0.85 ? 'dusk' : 'night';
+    if (ph !== G.dayPhase) { if (ph === 'dawn') toast(tr('t_dawn')); if (ph === 'dusk') toast(tr('t_dusk')); G.dayPhase = ph; }
+  }
+  const mixC = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  function drawDaySky(d, w) {
+    const top = mixC([93, 143, 216], [122, 120, 196], w), hor = mixC([217, 232, 248], [247, 178, 138], w);
+    const hy = yOff + 165;
+    g.globalAlpha = d;
+    for (let y = 0; y < H; y += 3) {
+      const t = Math.pow(clamp(y / hy, 0, 1), 1.4);
+      const c = mixC(top, hor, t);
+      g.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; g.fillRect(0, y, W, 3);
+    }
+    g.globalAlpha = 1;
   }
   const starY = () => lerp(H + 20, yOff + 44, ease(clamp(G.finT / 5, 0, 1)));
 
@@ -759,15 +821,27 @@
     frame(g, IM['c_' + n.spr], 20, f, x, y);
   }
   function renderWorld() {
+    const day = dayInfo();
+    g = gLo;
     g.fillStyle = C.sky0; g.fillRect(0, 0, W, H);
     g.fillStyle = '#bfc8f0';
     for (const [sx, sy, b] of topStars) if (sx < W && sy < yOff) { g.globalAlpha = 0.4 + b * 0.6; g.fillRect(Math.round(sx), Math.round(sy), 1, 1); }
     g.globalAlpha = 1;
+    g.save(); g.translate(0, yOff); tile(IM.bg_1_sky, 0); g.restore();
+    if (day.d > 0) drawDaySky(day.d, day.w);
+    if (day.sun >= 0) {                                   // the sun crosses the sky behind the mountains
+      const sx = W * (0.1 + 0.8 * day.sun), sy = yOff + 150 - Math.sin(Math.PI * day.sun) * 115;
+      const low = 1 - Math.sin(Math.PI * day.sun);
+      glow(g, sx, sy, 22, low > 0.5 ? 'rgba(255,170,110,' : 'rgba(255,240,190,');
+      g.fillStyle = low > 0.6 ? '#ffc48a' : '#fff1c4'; g.beginPath(); g.arc(Math.round(sx), Math.round(sy), 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ffffff'; g.fillRect(Math.round(sx) - 3, Math.round(sy) - 3, 2, 2);
+    }
+    if (G.lettersGiven && G.scene !== 'finale') { glow(g, W * 0.7 + 20, yOff + 40, 16, 'rgba(255,223,138,'); frame(g, IM.star, 40, Math.floor(G.time * 2) % 2, W * 0.7, yOff + 20, 0.9); }
+    // everything below the sky goes on its own layer so daylight can tint it
+    g = wg; g.clearRect(0, 0, W, H);
     const shx = G.shake > 0 ? Math.round((Math.random() - 0.5) * 4 * G.shake * 2) : 0;
     const shy = G.shake > 0 ? Math.round((Math.random() - 0.5) * 3 * G.shake * 2) : 0;
     g.save(); g.translate(shx, yOff + shy);
-    tile(IM.bg_1_sky, 0);
-    if (G.lettersGiven && G.scene !== 'finale') { glow(g, W * 0.7 + 20, 40, 16, 'rgba(255,223,138,'); frame(g, IM.star, 40, Math.floor(G.time * 2) % 2, W * 0.7, 20, 0.9); }
     tile(IM.bg_2_mountains, G.camX * 0.1);
     tile(IM.bg_3_forest_far, G.camX * 0.3);
     tile(IM.bg_4_forest_near, G.camX * 0.55);
@@ -824,6 +898,14 @@
     g.globalAlpha = 1;
     for (const s of sparkles) if (s.world) spark(g, sxW(s.x), s.y, s.t / s.d);
     g.restore();
+    if (day.d > 0 || day.w > 0) {
+      wg.globalCompositeOperation = 'source-atop';
+      if (day.d > 0) { wg.fillStyle = `rgba(226,236,255,${0.3 * day.d})`; wg.fillRect(0, 0, W, H); }
+      if (day.w > 0) { wg.fillStyle = `rgba(255,160,110,${0.16 * day.w})`; wg.fillRect(0, 0, W, H); }
+      wg.globalCompositeOperation = 'source-over';
+    }
+    g = gLo;
+    g.drawImage(wl, 0, 0);
     for (const f of flakes) frame(g, IM.flakes, 5, f.s, f.x, f.y);
   }
   function glow(c, x, y, r, rgbaPrefix) {
@@ -905,6 +987,8 @@
     const bx = W - 60, by = H - 26;
     button(bx, by, 27, 22, '', '', throttleDown, 'tl'); draw(u, IM.a_left, bx + 8, by + 5);
     button(bx + 30, by, 27, 22, '', '', throttleUp, 'tr'); draw(u, IM.a_right, bx + 39, by + 5);
+    button(bx - 30, by, 27, 22, '', '', () => { if (!canDrive()) return; G.boostTouch = true; if (G.throttle === 0) throttleUp(); }, 'boost');
+    draw(u, IM.a_right, bx - 25, by + 5); draw(u, IM.a_right, bx - 18, by + 5);
     if (busy()) return;
     const acts = actions();
     if (acts.length) {
@@ -920,7 +1004,7 @@
     const [ni, nd] = nextStation();
     const ob = nearObstacle();
     if (ob && Math.abs(G.v) < 0.5 && ahead(ob.x) < 150) { hint = tr('h_clear'); col = C.light; }
-    else if (G.v > 0 && G.mode === 'story' && nd < 220 && G.throttle === 1) { hint = tr('h_platform'); col = C.gold; a = Math.floor(G.time * 3) % 2 ? 1 : 0.55; }
+    else if (G.v > 0 && G.mode === 'story' && nd < 150 + G.v * G.v / (2 * BRK) && G.throttle === 1) { hint = tr('h_platform'); col = C.gold; a = Math.floor(G.time * 3) % 2 ? 1 : 0.55; }
     else if (G.v < 0) hint = tr('h_reverse');
     else if (Math.abs(G.v) < 0.5) hint = tr('h_stopped');
     else hint = tr('h_moving');
@@ -1094,5 +1178,5 @@
   // debug hook for automated playtests (harmless for players)
   window.__game = { get G() { return G; }, ST, get LETTERS() { return LETTERS; }, get PASS() { return PASS; }, get obstacles() { return obstacles; },
     actions: () => actions(), busy: () => busy(), dlg: () => dlg, setLang, tr, hit: () => { const o = nearObstacle(); if (o) hitObstacle(o); return !!o; },
-    ahead: x => ahead(x), get npcs() { return npcs; } };
+    ahead: x => ahead(x), get npcs() { return npcs; }, dayInfo: () => dayInfo() };
 })();
